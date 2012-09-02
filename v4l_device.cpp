@@ -1,5 +1,6 @@
 #include "v4l_device.h"
 
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <dirent.h>
 #include <libv4l2.h>
@@ -25,6 +26,17 @@ namespace std {
 typedef std::vector<std::string> StringList;
 
 namespace {
+
+struct BufferType  {
+	void*  start;
+	size_t length;
+};
+
+template<typename T>
+void clearMemory(T& t) {
+	std::memset(&t, 0, sizeof(T));
+}
+
 
 StringList getVideoDevs() {
 	StringList        ret;
@@ -118,10 +130,16 @@ class Video4LinuxDevice {
 public:
 	Video4LinuxDevice(const std::string & devName) : devName_(devName), fd_()
 	{
-		std::memset(&caps_, 0, sizeof(caps_));
+		clearMemory(caps_);
+		clearMemory(currFmt_);
 	}
 	~Video4LinuxDevice() {
 		if(fd_) close();
+
+		/* Cleanup. */
+		for (uint i = 0; i < buffers_.size(); i++) {
+			v4l2_munmap(buffers_[i].start, buffers_[i].length);
+		}
 	}
 
 	bool open() {
@@ -166,7 +184,7 @@ public:
 
 	void enumerateFormats() {
 		struct v4l2_fmtdesc desc;
-		std::memset(&desc, 0, sizeof(desc));
+		clearMemory(desc);
 		desc.pixelformat = v4l2Fourcc('Y','U', 'Y', 'V');
 		desc.pixelformat = nativePixelFormat_;
 		int result = 0;
@@ -187,7 +205,7 @@ public:
 
 	void getCurrentFormat() {
 		struct v4l2_format fmt;
-		std::memset(&fmt, 0, sizeof(fmt));
+		clearMemory(fmt);
 		fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		int result = v4l2_ioctl(fd_, VIDIOC_G_FMT, &fmt);
 		if (result == -1) {
@@ -201,16 +219,106 @@ public:
 		int result2 = v4l2_ioctl(fd_, VIDIOC_TRY_FMT, &fmt);
 		if (result2 == -1) {
 			std::cout << "Trying other format failed. ErrNo: " << errno;
+			return;
 		}
 		printPixFormat(pix);
+		int result3 = v4l2_ioctl(fd_, VIDIOC_S_FMT, &fmt);
+		if (result3 == -1) {
+			std::cout << "Could not set other format. ErrNo: " << errno;
+			return;
+		}
+		currFmt_ = pix;
 	}
 
+	bool initMMapStreaming() {
+		struct v4l2_requestbuffers reqbuf;
+		clearMemory(reqbuf);
+		reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		reqbuf.memory = V4L2_MEMORY_MMAP;
+		reqbuf.count = 20;
+
+		if (-1 == v4l2_ioctl(fd_, VIDIOC_REQBUFS, &reqbuf)) {
+			if (errno == EINVAL) {
+				std::cout << "Video capturing or mmap-streaming is not supported" << std::endl;
+			} else {
+				std::cout << "Init streaming failed. ErroNo: " << errno << std::endl;
+			}
+			return false;
+		}
+
+		/* We want at least five buffers. */
+		if (reqbuf.count < 5) {
+			/*TODO: You may need to free the buffers here. */
+			std::cout << "Not enough buffer memory" << std::endl;
+			return false;
+		}
+		buffers_.resize(reqbuf.count);
+
+		for (uint i = 0; i < buffers_.size(); i++) {
+			struct v4l2_buffer buffer;
+			clearMemory(buffer);
+
+			buffer.type = reqbuf.type;
+			buffer.memory = V4L2_MEMORY_MMAP;
+			buffer.index = i;
+			if (-1 == v4l2_ioctl (fd_, VIDIOC_QUERYBUF, &buffer)) {
+					std::cout << "VIDIOC_QUERYBUF failed" << std::endl;
+					return false;
+				}
+
+				buffers_[i].length = buffer.length; /* remember for munmap() */
+
+				buffers_[i].start = v4l2_mmap(NULL, buffer.length,
+							PROT_READ | PROT_WRITE, /* recommended */
+							MAP_SHARED,             /* recommended */
+							fd_, buffer.m.offset);
+
+				if (MAP_FAILED == buffers_[i].start) {
+					/* TODO: If you do not exit here you should unmap() and free()
+					   the buffers mapped so far. */
+					std::cout << "Map failed for buffer " << i << std::endl;
+				}
+		}
+
+		// finally queue them all!
+		for (uint i = 0; i < buffers_.size(); i++) {
+			struct v4l2_buffer buffer;
+			clearMemory(buffer);
+			buffer.type = reqbuf.type;
+			buffer.index = i;
+			if(-1 == v4l2_ioctl(fd_, VIDIOC_QBUF, &buffer)) {
+				std::cout << "Queueing of buffer " << i << " failed" << std::endl;
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	void initUPStreaming() {
+		struct v4l2_requestbuffers reqbuf;
+		clearMemory(reqbuf);
+		reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		reqbuf.memory = V4L2_MEMORY_USERPTR;
+
+		if (v4l2_ioctl (fd_, VIDIOC_REQBUFS, &reqbuf) == -1) {
+			if (errno == EINVAL) {
+				std::cout << "Video capturing or user pointer streaming is not supported" << std::endl;
+			} else {
+				std::cout << "VIDIOC_REQBUFS failed. ErrNo: " << errno << std::endl;
+			}
+		}
+	}
 
 private:
 	std::string devName_;
 	int fd_;
 	__u32 nativePixelFormat_;
 	struct v4l2_capability caps_;
+	v4l2_pix_format currFmt_;
+
+	std::vector<BufferType> buffers_;
+
 };
 
 V4lVideoDevice::V4lVideoDevice()
@@ -223,5 +331,6 @@ V4lVideoDevice::V4lVideoDevice()
 	dev.capabilities();
 	dev.enumerateFormats();
 	dev.getCurrentFormat();
-	dev.enumerateFrameSizes();
+	//dev.enumerateFrameSizes();
+	dev.initMMapStreaming();
 }
