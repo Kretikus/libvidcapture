@@ -7,6 +7,8 @@ TARGET =
 DEPENDPATH += .
 INCLUDEPATH += .
 
+HEADERS += vidcapture.h
+
 win32 {
 # Input
 HEADERS += ds_videodevice.h ds_utils.h
@@ -15,7 +17,7 @@ SOURCES += ds_videodevice.cpp dsmain.cpp
 
 unix:!macx {
 
-CXX_FLAGS += --std=c++11
+QMAKE_CXXFLAGS += --std=c++11
 
 HEADERS += v4l_device.h
 SOURCES += v4l_device.cpp main.cpp

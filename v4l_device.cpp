@@ -1,5 +1,7 @@
 #include "v4l_device.h"
 
+#include "vidcapture.h"
+
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -11,19 +13,13 @@
 
 #include <iostream>
 #include <string>
+#include <thread>
 #include <cstring>
 #include <vector>
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-
-/// my gcc does not supply this C++11 (21.5) standard function yet. TODO: remove?
-namespace std {
-	string to_string(int value) {
-		stringstream s; s << value;
-		return s.str();
-	}
-}
+#include <functional>
 
 typedef std::vector<std::string> StringList;
 
@@ -330,40 +326,40 @@ public:
 		}
 		int r = 0;
 		for (int i = 0; i < 20; i++) {
-				do {
-					FD_ZERO(&fds);
-					FD_SET(fd_, &fds);
+			do {
+				FD_ZERO(&fds);
+				FD_SET(fd_, &fds);
 
-					/* Timeout. */
-					tv.tv_sec = 2;
-					tv.tv_usec = 0;
+				/* Timeout. */
+				tv.tv_sec = 2;
+				tv.tv_usec = 0;
 
-					r = select(fd_ + 1, &fds, NULL, NULL, &tv);
-				} while ((r == -1 && (errno = EINTR)));
-				
-				if (r == -1) {
-						std::cout << "Select failed. ErrNo: " << errno << std::endl;
-						return;
-				}
-				clearMemory(buf);
-				buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-				buf.memory = V4L2_MEMORY_MMAP;
-				v4l2_ioctl(fd_, VIDIOC_DQBUF, &buf);
+				r = select(fd_ + 1, &fds, NULL, NULL, &tv);
+			} while ((r == -1 && (errno = EINTR)));
+			
+			if (r == -1) {
+					std::cout << "Select failed. ErrNo: " << errno << std::endl;
+					return;
+			}
+			clearMemory(buf);
+			buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+			buf.memory = V4L2_MEMORY_MMAP;
+			v4l2_ioctl(fd_, VIDIOC_DQBUF, &buf);
 
-				std::stringstream  outNameStream;
-				outNameStream << "/home/roman/out" << std::setfill('0') <<  std::setw(3) << i << ".ppm";
-				std::string fname = outNameStream.str();
-				std::ofstream fout;
-				fout.open(fname.c_str(), std::ios::out|std::ios::binary|std::ios::trunc);
-				if (!fout.is_open()) {
-						std::cout << "Cannot open image '" << fname << "'" << std::endl;
-						return;
-				}
-				fout << "P6\n" << currFmt_.width << " " << currFmt_.height << " 255\n"; 
-				fout.write(reinterpret_cast<const char*>(buffers_[buf.index].start), buf.bytesused);
-				fout.close();
-	
-				v4l2_ioctl(fd_, VIDIOC_QBUF, &buf);
+			std::stringstream  outNameStream;
+			outNameStream << "/home/roman/out" << std::setfill('0') <<  std::setw(3) << i << ".ppm";
+			std::string fname = outNameStream.str();
+			std::ofstream fout;
+			fout.open(fname.c_str(), std::ios::out|std::ios::binary|std::ios::trunc);
+			if (!fout.is_open()) {
+					std::cout << "Cannot open image '" << fname << "'" << std::endl;
+					return;
+			}
+			fout << "P6\n" << currFmt_.width << " " << currFmt_.height << " 255\n"; 
+			fout.write(reinterpret_cast<const char*>(buffers_[buf.index].start), buf.bytesused);
+			fout.close();
+
+			v4l2_ioctl(fd_, VIDIOC_QBUF, &buf);
 		}
 	
 		v4l2_ioctl(fd_, VIDIOC_STREAMOFF, &type);
@@ -391,6 +387,9 @@ V4lVideoDevice::V4lVideoDevice()
 	dev.getCurrentFormat();
 	//dev.enumerateFrameSizes();
 	dev.initMMapStreaming();
-	dev.streamFor5Seconds();
+
+	auto fnc = std::bind(&Video4LinuxDevice::streamFor5Seconds, &dev);
+	std::thread streamThread(fnc);
+	streamThread.join();
 
 }
