@@ -4,6 +4,7 @@
 
 #include <string>
 
+
 class SampleGrabberCallback : public ISampleGrabberCB
 {
 public:

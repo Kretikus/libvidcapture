@@ -391,5 +391,4 @@ V4lVideoDevice::V4lVideoDevice()
 	auto fnc = std::bind(&Video4LinuxDevice::streamFor5Seconds, &dev);
 	std::thread streamThread(fnc);
 	streamThread.join();
-
 }
