@@ -31,9 +31,10 @@ ISampleGrabber : IUnknown
 
 struct __declspec(uuid("c1f400a0-3f08-11d3-9f0b-006008039e37")) SampleGrabber; // [ default ] interface ISampleGrabber
 
-static const IID IID_ISampleGrabber = { 0x6B652FFF, 0x11FE, 0x4fce, { 0x92, 0xAD, 0x02, 0x66, 0xB5, 0xD7, 0xC7, 0x8F } };
+static const IID IID_ISampleGrabberCB  = { 0x0579154A, 0x2B53, 0x4994, { 0xB0, 0xD0, 0xE7, 0x73, 0x14, 0x8E, 0xFF, 0x85 } };
+static const IID IID_ISampleGrabber    = { 0x6B652FFF, 0x11FE, 0x4fce, { 0x92, 0xAD, 0x02, 0x66, 0xB5, 0xD7, 0xC7, 0x8F } };
 static const CLSID CLSID_SampleGrabber = { 0xC1F400A0, 0x3F08, 0x11d3, { 0x9F, 0x0B, 0x00, 0x60, 0x08, 0x03, 0x9E, 0x37 } };
-static const CLSID CLSID_NullRenderer = { 0xC1F400A4, 0x3F08, 0x11d3, { 0x9F, 0x0B, 0x00, 0x60, 0x08, 0x03, 0x9E, 0x37 } };
+static const CLSID CLSID_NullRenderer  = { 0xC1F400A4, 0x3F08, 0x11d3, { 0x9F, 0x0B, 0x00, 0x60, 0x08, 0x03, 0x9E, 0x37 } };
 
 #pragma endregion
 
@@ -51,6 +52,7 @@ template <class T> void SafeRelease(T **ppT)
 // Query whether a pin is connected to another pin.
 //
 // Note: This function does not return a pointer to the connected pin.
+inline
 HRESULT IsPinConnected(IPin *pPin, BOOL *pResult)
 {
 	IPin *pTmp = NULL;
@@ -71,6 +73,7 @@ HRESULT IsPinConnected(IPin *pPin, BOOL *pResult)
 }
 
 // Query whether a pin has a specified direction (input / output)
+inline
 HRESULT IsPinDirection(IPin *pPin, PIN_DIRECTION dir, BOOL *pResult)
 {
 	PIN_DIRECTION pinDir;
@@ -84,6 +87,7 @@ HRESULT IsPinDirection(IPin *pPin, PIN_DIRECTION dir, BOOL *pResult)
 
 
 // Match a pin by pin direction and connection state.
+inline
 HRESULT MatchPin(IPin *pPin, PIN_DIRECTION direction, BOOL bShouldBeConnected, BOOL *pResult)
 {
 	assert(pResult != NULL);
@@ -108,6 +112,7 @@ HRESULT MatchPin(IPin *pPin, PIN_DIRECTION direction, BOOL bShouldBeConnected, B
 }
 
 // Return the first unconnected input pin or output pin.
+inline
 HRESULT FindUnconnectedPin(IBaseFilter *pFilter, PIN_DIRECTION PinDir, IPin **ppPin)
 {
 	IEnumPins *pEnum = NULL;
@@ -147,6 +152,7 @@ done:
 	return hr;
 }
 
+inline
 HRESULT ConnectFilters(
 	IGraphBuilder *pGraph, // Filter Graph Manager.
 	IPin *pOut,            // Output pin on the upstream filter.
@@ -166,6 +172,7 @@ HRESULT ConnectFilters(
 }
 
 // Connect filter to input pin.
+inline
 HRESULT ConnectFilters(IGraphBuilder *pGraph, IBaseFilter *pSrc, IPin *pIn)
 {
 	IPin *pOut = NULL;
@@ -182,6 +189,7 @@ HRESULT ConnectFilters(IGraphBuilder *pGraph, IBaseFilter *pSrc, IPin *pIn)
 }
 
 // Connect filter to filter
+inline
 HRESULT ConnectFilters(IGraphBuilder *pGraph, IBaseFilter *pSrc, IBaseFilter *pDest)
 {
 	IPin *pOut = NULL;

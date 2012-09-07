@@ -2,398 +2,199 @@
 
 #include "ds_utils.h"
 
-#include <string>
+const int BITS_PER_PIXEL = 24;
 
-
-class SampleGrabberCallback : public ISampleGrabberCB
+class CallbackHandler : public ISampleGrabberCB
 {
 public:
-	SampleGrabberCallback() : cRef_(0) {}
+	CallbackHandler(DSVideoDevice::Impl* parent);
+	~CallbackHandler();
 
-	// Fake reference counting.
-	STDMETHODIMP_(ULONG) AddRef() { return ++cRef_; }
-	STDMETHODIMP_(ULONG) Release() { 
-		if (0 != --cRef_) return cRef_;
-		delete this;
-		return 0;
-	}
+	void setCallback(VideoCaptureCallback cb);
 
-	STDMETHODIMP QueryInterface(REFIID riid, void **ppvObject)
-	{
-		if (NULL == ppvObject) return E_POINTER;
-		if (riid == __uuidof(IUnknown))
-		{
-			*ppvObject = static_cast<IUnknown*>(this);
-			return S_OK;
-		}
-		if (riid == __uuidof(ISampleGrabberCB))
-		{
-			*ppvObject = static_cast<ISampleGrabberCB*>(this);
-			return S_OK;
-		}
-		return E_NOTIMPL;
-	}
+	virtual HRESULT __stdcall SampleCB(double time, IMediaSample* sample);
+	virtual HRESULT __stdcall BufferCB(double time, BYTE* buffer, long len);
+	virtual HRESULT __stdcall QueryInterface( REFIID iid, LPVOID *ppv );
+	virtual ULONG	__stdcall AddRef();
+	virtual ULONG	__stdcall Release();
 
-	STDMETHODIMP SampleCB(double Time, IMediaSample *pSample)
-	{
-		return E_NOTIMPL;
-	}
-
-	STDMETHODIMP BufferCB(double Time, BYTE *pBuffer, long BufferLen)
-	{
-		return E_NOTIMPL;
-	}
 private:
+	VideoCaptureCallback callback;
+	DSVideoDevice::Impl* parent;
 	ULONG cRef_;
 };
 
-
 class DSVideoDevice::Impl {
 public:
-	Impl() : pSourceF(), pEnum(), pPin(), pNullF() {}
+	Impl(int id, const std::wstring & devName, IFilterGraph2* graph) 
+		: id(id), filtername(devName), graph(graph),
+		sourcefilter(), samplegrabberfilter(), nullrenderer(), samplegrabber()
+	{
+		callbackhandler = new CallbackHandler(this);
+	}
 
-	/// generic init
-	std::shared_ptr<CoInstance<IGraphBuilder> > pGraph;
-	std::shared_ptr<InterfaceHolder<IMediaControl> > pControl;
-	std::shared_ptr<InterfaceHolder<IMediaEventEx> > pEvent;
-	std::shared_ptr<CoInstance<IBaseFilter> > pGrabberF;
-	std::shared_ptr<InterfaceHolder<ISampleGrabber> > pGrabber;
+	int             id;
+	std::wstring    filtername;
+	IFilterGraph2*  graph;
 
-	/// for graph completion
-	IBaseFilter* pSourceF;
-	IEnumPins* pEnum;
-	IPin* pPin;
-	IBaseFilter* pNullF;
+	IBaseFilter*    sourcefilter;
+	IBaseFilter*    samplegrabberfilter;
+	IBaseFilter*    nullrenderer;
+
+	ISampleGrabber* samplegrabber;
+
+	CallbackHandler* callbackhandler;
 };
 
-
-DSVideoDevice::DSVideoDevice()
-: d_(new Impl)
+DSVideoDevice::DSVideoDevice(int id, const std::wstring & devName, IFilterGraph2* graph, ICaptureGraphBuilder2* capture, IMoniker* moniker)
+: d_(new Impl(id, devName, graph))
 {
-	CoInitialize(NULL);
+	//add a filter for the device
+	HRESULT hr = graph->AddSourceFilterForMoniker(moniker, 0, d_->filtername.c_str(), &d_->sourcefilter);
+	if (hr != S_OK) throw hr;
 
-	d_->pGraph = std::make_shared<CoInstance<IGraphBuilder> >(CLSID_FilterGraph);
-	d_->pControl = std::make_shared<InterfaceHolder<IMediaControl> >(d_->pGraph->getIUnknown());
-	d_->pEvent = std::make_shared<InterfaceHolder<IMediaEventEx> >(d_->pGraph->getIUnknown());
-	d_->pGrabberF = std::make_shared<CoInstance<IBaseFilter> >(CLSID_SampleGrabber);
+	//create a samplegrabber filter for the device
+	hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER,IID_IBaseFilter,(void**)&d_->samplegrabberfilter);
+	if (hr < 0) throw hr;
 
-	if(d_->pGrabberF->isValid()) {
-		HRESULT hr = d_->pGraph->getInterface()->AddFilter(d_->pGrabberF->getInterface(), L"SampleGrabber" );
-		if(SUCCEEDED(hr)) {
-			d_->pGrabber = std::make_shared<InterfaceHolder<ISampleGrabber> >(d_->pGrabberF->getIUnknown());
-		}
-	}
-}
+	//set mediatype on the samplegrabber
+	hr = d_->samplegrabberfilter->QueryInterface(IID_ISampleGrabber, (void**)&d_->samplegrabber);
+	if (hr != S_OK) throw hr;
 
-DSVideoDevice::~DSVideoDevice()
-{
-	CoUninitialize();
-}
+	std::wstring sgFilterName = L"SG_" + d_->filtername;
+	graph->AddFilter(d_->samplegrabberfilter, sgFilterName.c_str());
 
-bool DSVideoDevice::setMediaType()
-{
+	//set the media type
 	AM_MEDIA_TYPE mt;
-	ZeroMemory(&mt, sizeof(mt));
+	memset(&mt, 0, sizeof(AM_MEDIA_TYPE));
+
 	mt.majortype = MEDIATYPE_Video;
-	mt.subtype = MEDIASUBTYPE_RGB24;
+	mt.subtype   = MEDIASUBTYPE_RGB24; 
+	// setting the above to 32 bits fails consecutive Select for some reason
+	// and only sends one single callback (flush from previous one ???)
+	// must be deeper problem. 24 bpp seems to work fine for now.
 
-	HRESULT hr = d_->pGrabber->getInterface()->SetMediaType(&mt);
-	if (FAILED(hr))
-	{
-		return false;
-	}
-	return true;
+	hr = d_->samplegrabber->SetMediaType(&mt);
+	if (hr != S_OK) throw hr;
+
+	//add the callback to the samplegrabber
+	hr = d_->samplegrabber->SetCallback(d_->callbackhandler, 0);
+	if (hr != S_OK) throw hr;
+
+	//set the null renderer
+	hr = CoCreateInstance(CLSID_NullRenderer,NULL,CLSCTX_INPROC_SERVER,IID_IBaseFilter,(void**) &d_->nullrenderer);
+	if (hr < 0) throw hr; 
+
+	std::wstring nrFilterName = L"NR_" + d_->filtername;
+	graph->AddFilter(d_->nullrenderer, nrFilterName.c_str());
+
+	//set the render path
+#ifdef SHOW_DEBUG_RENDERER
+	hr = capture->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, d_->sourcefilter, d_->samplegrabberfilter, NULL);
+#else
+	hr = capture->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, d_->sourcefilter, d_->samplegrabberfilter, d_->nullrenderer);
+#endif
+	if (hr < 0) throw hr; 
+
+	#undef max // to get std::limits to work
+	long long start=0;
+	long long stop = std::numeric_limits<long long>::max();
+	//if the stream is started, start capturing immediately
+	hr = capture->ControlStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, d_->sourcefilter, &start, &stop, 1,2);
+	if (hr < 0) throw hr;
 }
 
-bool DSVideoDevice::buildFilterGraph()
+int DSVideoDevice::getId() const
 {
-	std::wstring szVideoFile = L"";
-	HRESULT hr = d_->pGraph->getInterface()->AddSourceFilter(szVideoFile.c_str(), L"Source", &d_->pSourceF);
-	if (FAILED(hr))
-	{
-		return false;
-	}
-
-	hr = d_->pSourceF->EnumPins(&d_->pEnum);
-	if (FAILED(hr))
-	{
-		return false;
-	}
-
-	while (S_OK == d_->pEnum->Next(1, &d_->pPin, NULL))
-	{
-		hr = ConnectFilters(d_->pGraph->getInterface(), d_->pPin, d_->pGrabberF->getInterface());
-		SafeRelease(&d_->pPin);
-		if (SUCCEEDED(hr))
-		{
-			break;
-		}
-	}
-
-	if (FAILED(hr))
-	{
-		return false;
-	}
-	return true;
+	return d_->id;
 }
 
-bool DSVideoDevice::addNullRenderer()
+std::wstring DSVideoDevice::getName() const
 {
-	HRESULT hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&d_->pNullF));
-	if (FAILED(hr))
-	{
-		return false;
-	}
+	return d_->filtername;
+}
 
-	hr = d_->pGraph->getInterface()->AddFilter(d_->pNullF, L"Null Filter");
-	if (FAILED(hr))
-	{
-		return false;
-	}
+void DSVideoDevice::setCallback(VideoCaptureCallback cb)
+{
+	d_->callbackhandler->setCallback(cb);
+}
 
-	hr = ConnectFilters(d_->pGraph->getInterface(), d_->pGrabberF->getInterface(), d_->pNullF);
-	if (FAILED(hr))
-	{
-		return false;
-	}
+void DSVideoDevice::start()
+{
+	HRESULT hr;
 
-	return true;
+	hr = d_->nullrenderer->Run(0);
+	if (hr < 0) throw hr;
+
+	hr = d_->samplegrabberfilter->Run(0);
+	if (hr < 0) throw hr;
+
+	hr = d_->sourcefilter->Run(0);
+	if (hr < 0) throw hr;
+
+}
+
+void DSVideoDevice::stop()
+{
+	HRESULT hr;
+
+	hr = d_->sourcefilter->Stop();
+	if (hr < 0) throw hr;
+
+	hr = d_->samplegrabberfilter->Stop();
+	if (hr < 0) throw hr;
+
+	hr = d_->nullrenderer->Stop();
+	if (hr < 0) throw hr;
+
 }
 
 
-
-/*
-HRESULT WriteBitmap(PCWSTR, BITMAPINFOHEADER*, size_t, BYTE*, size_t);
-
-HRESULT GrabVideoBitmap(PCWSTR pszVideoFile, PCWSTR pszBitmapFile)
+CallbackHandler::CallbackHandler(DSVideoDevice::Impl* parent)
+: callback(), parent(parent), cRef_(0)
 {
-    IGraphBuilder *pGraph = NULL;
-    IMediaControl *pControl = NULL;
-    IMediaEventEx *pEvent = NULL;
-    IBaseFilter *pGrabberF = NULL;
-    ISampleGrabber *pGrabber = NULL;
-    IBaseFilter *pSourceF = NULL;
-    IEnumPins *pEnum = NULL;
-    IPin *pPin = NULL;
-    IBaseFilter *pNullF = NULL;
+}
+CallbackHandler::~CallbackHandler() {}
 
-    BYTE *pBuffer = NULL;
-
-    HRESULT hr = CoCreateInstance(CLSID_FilterGraph, NULL, 
-        CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&pGraph));
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGraph->QueryInterface(IID_PPV_ARGS(&pControl));
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGraph->QueryInterface(IID_PPV_ARGS(&pEvent));
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    // Create the Sample Grabber filter.
-    hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&pGrabberF));
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGraph->AddFilter(pGrabberF, L"Sample Grabber");
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGrabberF->QueryInterface(IID_PPV_ARGS(&pGrabber));
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    AM_MEDIA_TYPE mt;
-    ZeroMemory(&mt, sizeof(mt));
-    mt.majortype = MEDIATYPE_Video;
-    mt.subtype = MEDIASUBTYPE_RGB24;
-
-    hr = pGrabber->SetMediaType(&mt);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGraph->AddSourceFilter(pszVideoFile, L"Source", &pSourceF);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pSourceF->EnumPins(&pEnum);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    while (S_OK == pEnum->Next(1, &pPin, NULL))
-    {
-        hr = ConnectFilters(pGraph, pPin, pGrabberF);
-        SafeRelease(&pPin);
-        if (SUCCEEDED(hr))
-        {
-            break;
-        }
-    }
-
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, 
-        IID_PPV_ARGS(&pNullF));
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGraph->AddFilter(pNullF, L"Null Filter");
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = ConnectFilters(pGraph, pGrabberF, pNullF);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGrabber->SetOneShot(TRUE);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGrabber->SetBufferSamples(TRUE);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pControl->Run();
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    long evCode;
-    hr = pEvent->WaitForCompletion(INFINITE, &evCode);
-
-    // Find the required buffer size.
-    long cbBuffer;
-    hr = pGrabber->GetCurrentBuffer(&cbBuffer, NULL);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    pBuffer = (BYTE*)CoTaskMemAlloc(cbBuffer);
-    if (!pBuffer) 
-    {
-        hr = E_OUTOFMEMORY;
-        goto done;
-    }
-
-    hr = pGrabber->GetCurrentBuffer(&cbBuffer, (long*)pBuffer);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    hr = pGrabber->GetConnectedMediaType(&mt);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-
-    // Examine the format block.
-    if ((mt.formattype == FORMAT_VideoInfo) && 
-        (mt.cbFormat >= sizeof(VIDEOINFOHEADER)) &&
-        (mt.pbFormat != NULL)) 
-    {
-        VIDEOINFOHEADER *pVih = (VIDEOINFOHEADER*)mt.pbFormat;
-
-        hr = WriteBitmap(pszBitmapFile, &pVih->bmiHeader, 
-            mt.cbFormat - SIZE_PREHEADER, pBuffer, cbBuffer);
-    }
-    else 
-    {
-        // Invalid format.
-        hr = VFW_E_INVALIDMEDIATYPE; 
-    }
-
-    FreeMediaType(mt);
-
-done:
-    CoTaskMemFree(pBuffer);
-    SafeRelease(&pPin);
-    SafeRelease(&pEnum);
-    SafeRelease(&pNullF);
-    SafeRelease(&pSourceF);
-    SafeRelease(&pGrabber);
-    SafeRelease(&pGrabberF);
-    SafeRelease(&pControl);
-    SafeRelease(&pEvent);
-    SafeRelease(&pGraph);
-    return hr;
-};
-
-// Writes a bitmap file
-//  pszFileName:  Output file name.
-//  pBMI:         Bitmap format information (including pallete).
-//  cbBMI:        Size of the BITMAPINFOHEADER, including palette, if present.
-//  pData:        Pointer to the bitmap bits.
-//  cbData        Size of the bitmap, in bytes.
-
-HRESULT WriteBitmap(PCWSTR pszFileName, BITMAPINFOHEADER *pBMI, size_t cbBMI,
-    BYTE *pData, size_t cbData)
+void CallbackHandler::setCallback(VideoCaptureCallback cb) { callback = cb; }
+HRESULT __stdcall CallbackHandler::SampleCB(double time, IMediaSample* sample) 
 {
-    HANDLE hFile = CreateFile(pszFileName, GENERIC_WRITE, 0, NULL, 
-        CREATE_ALWAYS, 0, NULL);
-    if (hFile == NULL)
-    {
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
+	HRESULT hr;
+	unsigned char* buffer;
 
-    BITMAPFILEHEADER bmf = { };
+	hr = sample->GetPointer((BYTE**)&buffer);
+	if (hr != S_OK) return S_OK;
 
-    bmf.bfType = 'MB';
-    bmf.bfSize = cbBMI+ cbData + sizeof(bmf); 
-    bmf.bfOffBits = sizeof(bmf) + cbBMI; 
-
-    DWORD cbWritten = 0;
-    BOOL result = WriteFile(hFile, &bmf, sizeof(bmf), &cbWritten, NULL);
-    if (result)
-    {
-        result = WriteFile(hFile, pBMI, cbBMI, &cbWritten, NULL);
-    }
-    if (result)
-    {
-        result = WriteFile(hFile, pData, cbData, &cbWritten, NULL);
-    }
-
-    HRESULT hr = result ? S_OK : HRESULT_FROM_WIN32(GetLastError());
-
-    CloseHandle(hFile);
-
-    return hr;
+	//if (callback) callback(buffer, sample->GetActualDataLength(), BITS_PER_PIXEL, parent);
+	return S_OK;
 }
 
-*/
+HRESULT __stdcall CallbackHandler::BufferCB(double time, BYTE* buffer, long len) {
+	return S_OK;
+}
+
+HRESULT __stdcall CallbackHandler::QueryInterface( REFIID riid, LPVOID *ppvObject ) {
+
+	if (NULL == ppvObject) return E_POINTER;
+	if (riid == __uuidof(IUnknown))
+	{
+		*ppvObject = static_cast<IUnknown*>(this);
+		return S_OK;
+	}
+	if (riid == __uuidof(ISampleGrabberCB))
+	{
+		*ppvObject = static_cast<ISampleGrabberCB*>(this);
+		return S_OK;
+	}
+	return E_NOTIMPL;
+}
+
+ULONG __stdcall CallbackHandler::AddRef() {
+	return ++cRef_;
+}
+
+ULONG __stdcall CallbackHandler::Release() {
+	if (0 != --cRef_) return cRef_;
+	delete this;
+	return 0;
+}

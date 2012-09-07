@@ -1,15 +1,14 @@
-#include "ds_video_capture.h"
+#include "ds_videocapture.h"
 
 #include <iostream>
 
 void callback(unsigned char* data, int len, int bpp) {}
 
 int main(int argc, char* argv[]) {
-	VideoCapture * vc = new VideoCapture(callback);
-	VideoDevice* devices = vc->GetDevices();
-	int num_devices = vc->NumDevices();
-
-	for(int i=0; i < num_devices; ++i) {
-		std::wcout << devices[i].getFilterName() << std::endl;
+	DSVideoCapture c;
+	auto devices = c.getDevices();
+	
+	for(auto it = devices.begin(); it != devices.end(); ++it) {
+		std::wcout << it->getName() << std::endl;
 	}
 }

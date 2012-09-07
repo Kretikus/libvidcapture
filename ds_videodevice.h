@@ -1,18 +1,28 @@
 #pragma once
 
+#include <ObjIdl.h>
+#include <strmif.h>
+
+#include <string>
 #include <memory>
 
-class DSVideoDevice
-{
+class DSVideoDevice;
+typedef void (*VideoCaptureCallback)(unsigned char* data, int len, int bitsperpixel, DSVideoDevice* dev);
+
+class DSVideoDevice {
 public:
-	DSVideoDevice();
-	~DSVideoDevice();
+	DSVideoDevice(int id, const std::wstring & devName, IFilterGraph2* graph, ICaptureGraphBuilder2* capture, IMoniker*);
 
-	bool setMediaType();
-	bool buildFilterGraph();
-	bool addNullRenderer();
+	int          getId()   const;
+	std::wstring getName() const;
 
-private:
+	void setCallback(VideoCaptureCallback cb);
+	void start();
+	void stop();
+
+protected:
+	friend class CallbackHandler;
 	class Impl;
 	std::shared_ptr<Impl> d_;
 };
+
