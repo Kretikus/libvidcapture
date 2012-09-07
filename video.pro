@@ -11,8 +11,8 @@ HEADERS += vidcapture.h
 
 win32 {
 # Input
-HEADERS += ds_videodevice.h ds_utils.h
-SOURCES += ds_videodevice.cpp dsmain.cpp
+HEADERS += ds_videodevice.h ds_utils.h ds_video_capture.h
+SOURCES += ds_videodevice.cpp dsmain.cpp ds_video_capture.cpp
 }
 
 unix:!macx {

@@ -1,4 +1,4 @@
-#include "VideoCapture.h"
+#include "ds_video_capture.h"
 
 //VIDEODEVICE
 //public
