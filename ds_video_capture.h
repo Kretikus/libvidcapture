@@ -1,5 +1,6 @@
 #pragma once
 #pragma comment(lib, "strmiids")
+#pragma warning(disable : 4995 )
 
 #define SKIP_DXTRANS
 #define SHOW_DEBUG_RENDERER
@@ -24,6 +25,7 @@
 
 #include <windows.h>
 #include <dshow.h>
+#include <string>
 
 #pragma region Formerly located in qedit.h in Windows SDK, now obsoleted and defined within project
 
@@ -81,12 +83,11 @@ class VideoDevice
 public:
 	VideoDevice();
 	~VideoDevice();
-	
-	const char* GetFriendlyName();
+
+	std::wstring getFilterName() const { return filtername; }
 
 private:
-	char*			friendlyname;
-	WCHAR*			filtername;
+	std::wstring	filtername;
 	IBaseFilter*	filter;
 	friend class	VideoCapture;
 };

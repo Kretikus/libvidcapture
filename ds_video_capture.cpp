@@ -3,23 +3,14 @@
 //VIDEODEVICE
 //public
 VideoDevice::VideoDevice()
+	: filter()
 {
-	friendlyname = (char*) calloc(1, MAX_DEVICE_NAME * sizeof(char));
-	filtername =  (WCHAR*) calloc(1, MAX_DEVICE_NAME * sizeof(WCHAR));
 	filter = 0;
 }
 
 VideoDevice::~VideoDevice()
 {
-	free(friendlyname);
-	free(filtername);
 }
-
-const char* VideoDevice::GetFriendlyName()
-{
-	return friendlyname;
-}
-
 
 
 //VIDEOCAPTURE
@@ -73,7 +64,7 @@ void VideoCapture::Select(VideoDevice* dev)
 		graph->RemoveFilter(samplegrabberfilter);
 
 		graph->AddFilter(samplegrabberfilter,L"Sample Grabber");
-		graph->AddFilter(current->filter, current->filtername);
+		graph->AddFilter(current->filter, current->filtername.c_str());
 	}
 	
 	start = 0;
@@ -158,11 +149,10 @@ void VideoCapture::SetSourceFilters()
 
 	//get devices (max 8)
 	num_devices = 0;
-	enum_moniker->Next(MAX_DEVICES, &moniker, &dev_count);
-	for (unsigned int i=0; i<dev_count; i++)
+	while (enum_moniker->Next(1, &moniker, 0) == S_OK)
 	{
 		//get properties
-		hr = moniker[i].BindToStorage(0, 0, IID_IPropertyBag, (void**) &pbag);
+		hr = moniker->BindToStorage(0, 0, IID_IPropertyBag, (void**) &pbag);
 		if (hr >= 0)
 		{
 			VariantInit(&name);
@@ -176,21 +166,16 @@ void VideoCapture::SetSourceFilters()
 				VideoDevice* dev = devices+num_devices++;
 				BSTR ptr = name.bstrVal;
 
-				for (int c = 0; *ptr; c++, ptr++)
-				{
-					//bit hacky, but i don't like to include ATL
-					dev->filtername[c] = *ptr;
-					dev->friendlyname[c] = *ptr & 0xFF;
-				}
+				dev->filtername = std::wstring(ptr);
 				
 				//add a filter for the device
-				hr = graph->AddSourceFilterForMoniker(moniker+i, 0, dev->filtername, &dev->filter);
+ 				hr = graph->AddSourceFilterForMoniker(moniker, 0, dev->filtername.c_str(), &dev->filter);
 				if (hr != S_OK) num_devices--;
 			}
 			VariantClear(&name);
 			pbag->Release();
 		}
-		moniker[i].Release();
+		moniker->Release();
 	}
 }
 

@@ -7,6 +7,8 @@ TARGET =
 DEPENDPATH += .
 INCLUDEPATH += .
 
+CONFIG += console
+
 HEADERS += vidcapture.h
 
 win32 {

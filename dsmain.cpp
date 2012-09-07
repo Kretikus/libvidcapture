@@ -10,6 +10,6 @@ int main(int argc, char* argv[]) {
 	int num_devices = vc->NumDevices();
 
 	for(int i=0; i < num_devices; ++i) {
-		std::cout << devices[i].GetFriendlyName() << std::endl;
+		std::wcout << devices[i].getFilterName() << std::endl;
 	}
 }
