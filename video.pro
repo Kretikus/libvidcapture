@@ -13,7 +13,7 @@ HEADERS += vidcapture.h
 
 win32 {
 # Input
-HEADERS += ds_videodevice.h ds_videocapture.h ds_utils.h 
+HEADERS += ds_videodevice.h ds_videocapture.h ds_utils.h
 	SOURCES += ds_videodevice.cpp ds_videocapture.cpp dsmain.cpp
 }
 
@@ -24,6 +24,14 @@ QMAKE_CXXFLAGS += --std=c++11
 HEADERS += v4l_device.h
 SOURCES += v4l_device.cpp main.cpp
 
-QMAKE_LIBS += -lv4l2
+LIBS += -lv4l2
+}
+
+macx {
+
+HEADERS += mac_capture.h
+OBJECTIVE_SOURCES += mac_capture.mm macmain.cpp
+
+LIBS += -lobjc -framework cocoa -framework QTKit -framework QuartzCore
 }
 
