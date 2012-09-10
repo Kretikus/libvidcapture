@@ -1,6 +1,15 @@
-#include "v4l_device.h"
+#include "vidcapture.h"
+
+#include <iostream>
 
 int main(int argc, char* argv[])
 {
-	V4lVideoDevice dev;
+	(void)argc; (void)argv;
+
+	using namespace vidcapture;
+	VidCapture* cap = getVidCapture();
+	std::vector<VideoDevice*> devices = cap->getDevices();
+	for(auto d: devices) {
+		std::cout << d->getName() << std::endl;
+	}
 }

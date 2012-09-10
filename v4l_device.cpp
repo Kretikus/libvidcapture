@@ -21,9 +21,12 @@
 #include <iomanip>
 #include <functional>
 
+
 typedef std::vector<std::string> StringList;
 
 namespace {
+
+const bool debugOutput = false;
 
 struct BufferType  {
 	void*  start;
@@ -115,12 +118,13 @@ __u32 v4l2Fourcc(char a, char b, char c, char d) {
 }
 
 void printPixFormat(const v4l2_pix_format& pix) {
-	std::cout << "Width:\t\t"        << pix.width << std::endl;
-	std::cout << "Height:\t\t"       << pix.height << std::endl;
-	std::cout << "PixelFormat:\t"    << getFourcc(pix.pixelformat) << std::endl;
-	std::cout << "Bytes Per Line:\t" << pix.bytesperline << std::endl;
-	std::cout << "Size image:\t\t"   << pix.sizeimage << std::endl;
-	std::cout << "Colorspace:\t\t"   << pix.colorspace << std::endl << std::endl;
+	if (!debugOutput) return;
+		std::cout << "Width:\t\t"        << pix.width << std::endl;
+		std::cout << "Height:\t\t"       << pix.height << std::endl;
+		std::cout << "PixelFormat:\t"    << getFourcc(pix.pixelformat) << std::endl;
+		std::cout << "Bytes Per Line:\t" << pix.bytesperline << std::endl;
+		std::cout << "Size image:\t\t"   << pix.sizeimage << std::endl;
+		std::cout << "Colorspace:\t\t"   << pix.colorspace << std::endl << std::endl;
 }
 
 }
@@ -162,6 +166,7 @@ public:
 			std::cout << "Could not query capabilities of the device. ErrNo: " << errno << std::endl;
 			return;
 		}
+		if(!debugOutput) return;
 		std::cout << "Driver:\t " << caps_.driver << std::endl;
 		std::cout << "Card:\t " << caps_.card << std::endl;
 		std::cout << "Bus info:\t " << caps_.bus_info << std::endl;
@@ -365,7 +370,7 @@ public:
 		v4l2_ioctl(fd_, VIDIOC_STREAMOFF, &type);
 	}
 
-private:
+public:
 	std::string devName_;
 	int fd_;
 	__u32 nativePixelFormat_;
@@ -375,20 +380,93 @@ private:
 	std::vector<BufferType> buffers_;
 };
 
-V4lVideoDevice::V4lVideoDevice()
+//V4lVideoDevice::V4lVideoDevice()
+//{
+//	StringList rawDevicesList = getVideoDevs();
+//	if (rawDevicesList.empty()) return;
+
+//	Video4LinuxDevice dev(rawDevicesList[0]);
+//	dev.open();
+//	dev.capabilities();
+//	dev.enumerateFormats();
+//	dev.getCurrentFormat();
+//	//dev.enumerateFrameSizes();
+//	dev.initMMapStreaming();
+
+//	auto fnc = std::bind(&Video4LinuxDevice::streamFor5Seconds, &dev);
+//	std::thread streamThread(fnc);
+//	streamThread.join();
+//}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+namespace vidcapture {
+
+V4lVideoDevice::V4lVideoDevice(const std::string & fsDevName)
+: fsDevName_(fsDevName), device_(new Video4LinuxDevice(fsDevName))
+{
+	if (!device_->open()) {
+		device_.reset();
+		return;
+	}
+	
+	device_->capabilities();
+	
+	device_->close();
+}
+
+V4lVideoDevice::~V4lVideoDevice()
+{
+	if (device_) { 
+		device_->close();
+	}
+}
+
+bool V4lVideoDevice::isValid() const {
+	return (bool)device_;
+}
+
+std::string V4lVideoDevice::getName() const {
+	if (!isValid()) return fsDevName_;
+	const v4l2_capability& caps = device_->caps_;
+	std::string name = std::string(reinterpret_cast<const char*>(caps.card)) + 
+						" " + 
+						std::string(reinterpret_cast<const char*>(caps.driver));
+	return name;
+}
+
+DeviceCapabilities V4lVideoDevice::getDeviceCapabilities() const
+{
+	return DeviceCapabilities();
+}
+
+
+V4lVidCapture::V4lVidCapture()
 {
 	StringList rawDevicesList = getVideoDevs();
-	if (rawDevicesList.empty()) return;
+	for(auto s : rawDevicesList) {
+		devices_.push_back(new V4lVideoDevice(s));
+	}
+}
 
-	Video4LinuxDevice dev(rawDevicesList[0]);
-	dev.open();
-	dev.capabilities();
-	dev.enumerateFormats();
-	dev.getCurrentFormat();
-	//dev.enumerateFrameSizes();
-	dev.initMMapStreaming();
 
-	auto fnc = std::bind(&Video4LinuxDevice::streamFor5Seconds, &dev);
-	std::thread streamThread(fnc);
-	streamThread.join();
+V4lVidCapture::~V4lVidCapture()
+{
+	for(auto dev: devices_) {
+		delete dev;
+	}
+}
+
+std::vector<VideoDevice*> V4lVidCapture::getDevices()
+{
+	return devices_;
+}
+
+}
+
+vidcapture::VidCapture* vidcapture::getVidCapture()
+{
+	return new vidcapture::V4lVidCapture;
 }

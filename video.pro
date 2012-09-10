@@ -10,6 +10,7 @@ INCLUDEPATH += .
 CONFIG += console
 
 HEADERS += vidcapture.h
+SOURCES += vidcapture.cpp
 
 win32 {
 # Input
