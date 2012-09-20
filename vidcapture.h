@@ -8,7 +8,7 @@ namespace vidcapture {
 class PixelFormat {
 public:
 	enum Enum {
-		Unknown,
+		Unknown = 0,
 		RGB24,
 		YUV12,
 		YUVY
@@ -24,13 +24,13 @@ private:
 	int value_;
 };
 
-class DeviceCapabilities {
+class VideoDeviceCapabilities {
 public:
-	DeviceCapabilities() : width(), height() {}
+	VideoDeviceCapabilities() : width(), height() {}
 
 public:
-	uint                     width;
-	uint                     height;
+	unsigned int                     width;
+	unsigned int                     height;
 	PixelFormat              currentFormat;
 	std::vector<PixelFormat> supportedFormats;
 };
@@ -39,9 +39,9 @@ class VideoDevice {
 public:
 	virtual ~VideoDevice();
 
-	virtual bool               isValid              () const = 0;
-	virtual std::string        getName              () const = 0;
-	virtual DeviceCapabilities getDeviceCapabilities() const = 0;
+	virtual bool                    isValid              () const = 0;
+	virtual std::string             getName              () const = 0;
+	virtual VideoDeviceCapabilities getDeviceCapabilities() const = 0;
 };
 
 class VidCapture

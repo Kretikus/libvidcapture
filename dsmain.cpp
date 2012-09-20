@@ -1,14 +1,20 @@
-#include "ds_videocapture.h"
+#include "vidcapture.h"
 
 #include <iostream>
 
-void callback(unsigned char* data, int len, int bpp) {}
+#include "util.h"
 
 int main(int argc, char* argv[]) {
-	DSVideoCapture c;
-	auto devices = c.getDevices();
+	(void)argc; (void)argv;
+	using namespace vidcapture;
+
+	VidCapture* capture = getVidCapture();
+	if(!capture) return -1;
+
+	auto devices = capture->getDevices();
 	
 	for(auto it = devices.begin(); it != devices.end(); ++it) {
-		std::wcout << it->getName() << std::endl;
+		std::cout << (*it)->getName() << std::endl;
 	}
+	return 0;
 }

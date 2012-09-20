@@ -2,6 +2,10 @@
 
 #include "ds_utils.h"
 
+#include "util.h"
+
+namespace vidcapture {
+
 const int BITS_PER_PIXEL = 24;
 
 class CallbackHandler : public ISampleGrabberCB
@@ -104,14 +108,20 @@ DSVideoDevice::DSVideoDevice(int id, const std::wstring & devName, IFilterGraph2
 	if (hr < 0) throw hr;
 }
 
-int DSVideoDevice::getId() const
+bool DSVideoDevice::isValid() const
 {
-	return d_->id;
+	return true;
 }
 
-std::wstring DSVideoDevice::getName() const
+VideoDeviceCapabilities DSVideoDevice::getDeviceCapabilities() const
 {
-	return d_->filtername;
+	return VideoDeviceCapabilities();
+}
+
+std::string DSVideoDevice::getName() const
+{
+	//return d_->filtername;
+	return StringConversion::toStdString(d_->filtername);
 }
 
 void DSVideoDevice::setCallback(VideoCaptureCallback cb)
@@ -197,4 +207,6 @@ ULONG __stdcall CallbackHandler::Release() {
 	if (0 != --cRef_) return cRef_;
 	delete this;
 	return 0;
+}
+
 }
