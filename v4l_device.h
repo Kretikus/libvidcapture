@@ -13,9 +13,9 @@ public:
 	V4lVideoDevice(const std::string & fsDevName);
 	~V4lVideoDevice();
 
-	virtual bool               isValid              () const;
-	virtual std::string        getName              () const;
-	virtual DeviceCapabilities getDeviceCapabilities() const;
+	virtual bool                    isValid              () const;
+	virtual std::string             getName              () const;
+	virtual VideoDeviceCapabilities getDeviceCapabilities() const;
 
 private:
 	std::string        fsDevName_;
@@ -33,7 +33,7 @@ public:
 private:
 	std::vector<VideoDevice*> devices_;
 };
-	
+
 }
 
 

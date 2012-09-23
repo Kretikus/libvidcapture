@@ -341,7 +341,7 @@ public:
 
 				r = select(fd_ + 1, &fds, NULL, NULL, &tv);
 			} while ((r == -1 && (errno = EINTR)));
-			
+
 			if (r == -1) {
 					std::cout << "Select failed. ErrNo: " << errno << std::endl;
 					return;
@@ -360,13 +360,13 @@ public:
 					std::cout << "Cannot open image '" << fname << "'" << std::endl;
 					return;
 			}
-			fout << "P6\n" << currFmt_.width << " " << currFmt_.height << " 255\n"; 
+			fout << "P6\n" << currFmt_.width << " " << currFmt_.height << " 255\n";
 			fout.write(reinterpret_cast<const char*>(buffers_[buf.index].start), buf.bytesused);
 			fout.close();
 
 			v4l2_ioctl(fd_, VIDIOC_QBUF, &buf);
 		}
-	
+
 		v4l2_ioctl(fd_, VIDIOC_STREAMOFF, &type);
 	}
 
@@ -411,15 +411,15 @@ V4lVideoDevice::V4lVideoDevice(const std::string & fsDevName)
 		device_.reset();
 		return;
 	}
-	
+
 	device_->capabilities();
-	
+
 	device_->close();
 }
 
 V4lVideoDevice::~V4lVideoDevice()
 {
-	if (device_) { 
+	if (device_) {
 		device_->close();
 	}
 }
@@ -431,15 +431,15 @@ bool V4lVideoDevice::isValid() const {
 std::string V4lVideoDevice::getName() const {
 	if (!isValid()) return fsDevName_;
 	const v4l2_capability& caps = device_->caps_;
-	std::string name = std::string(reinterpret_cast<const char*>(caps.card)) + 
-						" " + 
+	std::string name = std::string(reinterpret_cast<const char*>(caps.card)) +
+						" " +
 						std::string(reinterpret_cast<const char*>(caps.driver));
 	return name;
 }
 
-DeviceCapabilities V4lVideoDevice::getDeviceCapabilities() const
+VideoDeviceCapabilities V4lVideoDevice::getDeviceCapabilities() const
 {
-	return DeviceCapabilities();
+	return VideoDeviceCapabilities();
 }
 
 

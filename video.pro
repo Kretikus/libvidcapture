@@ -9,13 +9,19 @@ INCLUDEPATH += .
 
 CONFIG += console
 
-HEADERS += vidcapture.h util.h
-SOURCES += vidcapture.cpp util.cpp
+HEADERS += \
+	vidcapture.h \
+	util.h \
+
+SOURCES += \
+	main.cpp \
+	util.cpp \
+	vidcapture.cpp \
 
 win32 {
 # Input
 HEADERS += ds_videodevice.h ds_videocapture.h ds_utils.h
-	SOURCES += ds_videodevice.cpp ds_videocapture.cpp dsmain.cpp
+SOURCES += ds_videodevice.cpp ds_videocapture.cpp
 }
 
 unix:!macx {
@@ -23,7 +29,7 @@ unix:!macx {
 QMAKE_CXXFLAGS += --std=c++11
 
 HEADERS += v4l_device.h
-SOURCES += v4l_device.cpp main.cpp
+SOURCES += v4l_device.cpp
 
 LIBS += -lv4l2
 }
