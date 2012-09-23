@@ -227,7 +227,7 @@ public:
 			std::cout << "Trying other format failed. ErrNo: " << errno << std::endl;
 			return;
 		} else {
-			std::cout << "Format reurned: " << errno << std::endl;
+			std::cout << "Format returned: " << errno << std::endl;
 		}
 		printPixFormat(pix);
 		int result3 = v4l2_ioctl(fd_, VIDIOC_S_FMT, &fmt);
@@ -439,7 +439,11 @@ std::string V4lVideoDevice::getName() const {
 
 VideoDeviceCapabilities V4lVideoDevice::getDeviceCapabilities() const
 {
-	return VideoDeviceCapabilities();
+	if(!isValid()) return VideoDeviceCapabilities();
+	VideoDeviceCapabilities videoCaps;
+	const v4l2_capability& caps = device_->caps_;
+
+	return videoCaps;
 }
 
 

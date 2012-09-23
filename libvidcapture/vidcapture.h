@@ -29,8 +29,8 @@ public:
 	VideoDeviceCapabilities() : width(), height() {}
 
 public:
-	unsigned int                     width;
-	unsigned int                     height;
+	unsigned int             width;
+	unsigned int             height;
 	PixelFormat              currentFormat;
 	std::vector<PixelFormat> supportedFormats;
 };
