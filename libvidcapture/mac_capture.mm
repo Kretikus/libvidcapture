@@ -111,6 +111,7 @@
 
 @end
 
+namespace vidcapture {
 
 class MacDevice::Impl {
 public:
@@ -133,6 +134,12 @@ bool MacDevice::isValid() const
 {
 	return d_->device;
 }
+
+VideoDeviceCapabilities MacDevice::getDeviceCapabilities() const
+{
+	return VideoDeviceCapabilities();
+}
+
 
 class MacCapture::Impl
 {
@@ -162,9 +169,9 @@ MacCapture::~MacCapture()
 	delete d_;
 }
 
-std::vector<MacDevice> MacCapture::getDevices() const
+std::vector<VideoDevice*> MacCapture::getDevices()
 {
-	std::vector<MacDevice> ret;
+	std::vector<VideoDevice*> ret;
 	//TODO check QTMediaTypeMuxed type as well
 
 	//QTCaptureDevice *defaultDevice = [QTCaptureDevice defaultInputDeviceWithMediaType: QTMediaTypeVideo];
@@ -175,8 +182,8 @@ std::vector<MacDevice> MacCapture::getDevices() const
 	NSEnumerator* enumerator = [devicesWithMediaType objectEnumerator];
 	id value = 0;
 	while ((value = [enumerator nextObject])) {
-		MacDevice dev;
-		dev.d_->device = (QTCaptureDevice*) value;
+		MacDevice* dev = new MacDevice;
+		dev->d_->device = (QTCaptureDevice*) value;
 		ret.push_back(dev);
 	}
 
@@ -188,3 +195,12 @@ void MacCapture::openDevice(const MacDevice & videoDevice)
 	if (!videoDevice.isValid()) return;
 	[d_->captureHelper open: videoDevice.d_->device];
 }
+
+}
+
+vidcapture::VidCapture* vidcapture::getVidCapture()
+{
+	static vidcapture::VidCapture* ret = new MacCapture;
+	return ret;
+}
+

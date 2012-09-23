@@ -9,9 +9,10 @@ int main(int argc, char* argv[]) {
 	VidCapture* capture = getVidCapture();
 	if(!capture) return -1;
 
-	auto devices = capture->getDevices();
+	std::vector<VideoDevice*> devices = capture->getDevices();
+	typedef std::vector<VideoDevice*>::const_iterator Iterator;
 
-	for(auto it = devices.begin(); it != devices.end(); ++it) {
+	for(Iterator it = devices.begin(); it != devices.end(); ++it) {
 		std::cout << (*it)->getName() << std::endl;
 	}
 	return 0;

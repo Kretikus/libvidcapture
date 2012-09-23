@@ -1,15 +1,21 @@
 #pragma once
 
+#include "vidcapture.h"
+
 #include <memory>
 #include <string>
 #include <vector>
 
-class MacDevice {
+namespace vidcapture {
+
+class MacDevice : public VideoDevice
+{
 public:
 	MacDevice();
 
-	std::string getName() const;
-	bool isValid() const;
+	virtual bool                    isValid              () const;
+	virtual std::string             getName              () const;
+	virtual VideoDeviceCapabilities getDeviceCapabilities() const;
 
 private:
 	friend class MacCapture;
@@ -17,13 +23,13 @@ private:
 	Impl* d_;
 };
 
-class MacCapture
+class MacCapture : public VidCapture
 {
 public:
 	MacCapture();
 	~MacCapture();
 
-	std::vector<MacDevice> getDevices() const;
+	virtual std::vector<VideoDevice*> getDevices();
 
 	void openDevice(const MacDevice & videoDevice);
 
@@ -31,3 +37,5 @@ private:
 	class Impl;
 	Impl* d_;
 };
+
+}

@@ -29,7 +29,6 @@ unix:!macx {
 }
 
 macx {
-	HEADERS += mac_capture.h
-	OBJECTIVE_SOURCES += mac_capture.mm macmain.cpp
+	HEADERS           += mac_capture.h
+	OBJECTIVE_SOURCES += mac_capture.mm
 }
-
