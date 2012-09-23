@@ -12,7 +12,7 @@
 //
 //class Widen : public std::unary_function<
 //	const std::string&, std::basic_string<E, T, A> >
-//{ 
+//{
 //	std::locale loc_;
 //	const std::ctype<E>* pCType_;
 //
@@ -20,21 +20,21 @@
 //	Widen(const Widen&);
 //	Widen& operator= (const Widen&);
 //
-//public: 
+//public:
 //	// Constructor...
 //	Widen(const std::locale& loc = std::locale()) : loc_(loc)
 //	{
 //#if defined(_MSC_VER) && (_MSC_VER < 1300) // VC++ 6.0...
-//		using namespace std; 
+//		using namespace std;
 //		pCType_ = &_USE(loc, ctype<E> );
-//#else 
+//#else
 //		pCType_ = &std::use_facet<std::ctype<E> >(loc);
-//#endif 
-//	} 
+//#endif
+//	}
 //
-//	// Conversion... 
+//	// Conversion...
 //	std::basic_string<E, T, A> operator() (const std::string& str) const
-//	{ 
+//	{
 //		typename std::basic_string<E, T, A>::size_type srcLen =
 //			str.length();
 //		const char* pSrcBeg = str.c_str();
@@ -52,7 +52,7 @@
 //
 //class Narrow : public std::unary_function<
 //	const std::string&, std::basic_string<E, T, A> >
-//{ 
+//{
 //	std::locale loc_;
 //	const std::ctype<E>* pCType_;
 //
@@ -60,21 +60,21 @@
 //	Narrow(const Narrow&);
 //	Narrow& operator= (const Narrow&);
 //
-//public: 
+//public:
 //	// Constructor...
 //	Narrow(const std::locale& loc = std::locale()) : loc_(loc)
 //	{
 //#if defined(_MSC_VER) && (_MSC_VER < 1300) // VC++ 6.0...
-//		using namespace std; 
+//		using namespace std;
 //		pCType_ = &_USE(loc, ctype<E> );
-//#else 
+//#else
 //		pCType_ = &std::use_facet<std::ctype<T> >(loc);
-//#endif 
-//	} 
+//#endif
+//	}
 //
-//	// Conversion... 
+//	// Conversion...
 //	std::basic_string<E, T, A> operator() (const std::wstring& str) const
-//	{ 
+//	{
 //		typename std::basic_string<E, T, A>::size_type srcLen =
 //			str.length();
 //		const wchar_t* pSrcBeg = str.c_str();
@@ -103,17 +103,4 @@ std::wstring StringConversion::toStdWString( const std::string & s )
 	return ret;
 }
 
-//int test() {
-//std::wstring w = L"TEST String@!";
-//std::string s = "TEST String@!";
-//std::string c = StringConversion::toStdString(w);
-//if(c != s) {
-//	std::cout << "ERROR" << std::endl;
-//	return -1;
-//}
-//std::wstring c2 = StringConversion::toStdWString(s);
-//if(c2 != w) {
-//	std::cout << "ERROR" << std::endl;
-//	return -1;
-//}
-//}
+

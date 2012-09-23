@@ -1,5 +1,13 @@
 include(../config.pri)
 
-SOURCES += main.cpp
+QT += testlib
+
+HEADERS += \
+	testutil.h
+
+SOURCES += \
+	testutil.cpp \
+	testmain.cpp \
+	utiltest.cpp \
 
 initApp(vidcapture)
