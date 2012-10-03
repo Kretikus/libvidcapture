@@ -13,6 +13,9 @@ public:
 
 	void setImage(const QImage & img);
 
+private Q_SLOTS:
+	void doSetImage(const QImage & img);
+
 private:
 	QLabel* lbl_;
 

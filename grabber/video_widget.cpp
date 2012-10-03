@@ -1,5 +1,6 @@
 #include "video_widget.h"
 
+#include <QMetaObject>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QImage>
@@ -15,6 +16,11 @@ VideoWidget::VideoWidget(QWidget* parent)
 }
 
 void VideoWidget::setImage( const QImage & img )
+{
+	metaObject()->invokeMethod(this, "doSetImage", Qt::QueuedConnection, Q_ARG(QImage, img) );
+}
+
+void VideoWidget::doSetImage(const QImage &img)
 {
 	lbl_->setPixmap(QPixmap::fromImage(img));
 }

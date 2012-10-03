@@ -17,6 +17,10 @@ public:
 	virtual std::string             getName              () const;
 	virtual VideoDeviceCapabilities getDeviceCapabilities() const;
 
+	virtual void setCallback(VideoCallback cb, void* userDataPtr);
+	virtual bool start();
+	virtual bool stop();
+
 private:
 	std::string        fsDevName_;
 	std::shared_ptr<Video4LinuxDevice> device_;

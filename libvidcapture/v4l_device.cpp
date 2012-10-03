@@ -24,9 +24,10 @@
 
 typedef std::vector<std::string> StringList;
 
+
 namespace {
 
-const bool debugOutput = false;
+const bool debugOutput = true;
 
 struct BufferType  {
 	void*  start;
@@ -38,7 +39,6 @@ inline
 void clearMemory(T& t) {
 	std::memset(&t, 0, sizeof(T));
 }
-
 
 StringList getVideoDevs() {
 	StringList        ret;
@@ -131,7 +131,8 @@ void printPixFormat(const v4l2_pix_format& pix) {
 
 class Video4LinuxDevice {
 public:
-	Video4LinuxDevice(const std::string & devName) : devName_(devName), fd_()
+	Video4LinuxDevice(const std::string & devName)
+	: devName_(devName), fd_(), doStream_(), userData_()
 	{
 		clearMemory(caps_);
 		clearMemory(currFmt_);
@@ -155,6 +156,7 @@ public:
 	}
 
 	bool close() {
+		std::cout << "Close()" << std::endl;
 		v4l2_close(fd_);
 		fd_ = 0;
 		return true;
@@ -166,6 +168,7 @@ public:
 			std::cout << "Could not query capabilities of the device. ErrNo: " << errno << std::endl;
 			return;
 		}
+		enumerateFormats();
 		if(!debugOutput) return;
 		std::cout << "Driver:\t " << caps_.driver << std::endl;
 		std::cout << "Card:\t " << caps_.card << std::endl;
@@ -220,8 +223,9 @@ public:
 		v4l2_pix_format& pix = reinterpret_cast<v4l2_pix_format&>(fmt.fmt);
 		printPixFormat(pix);
 		nativePixelFormat_ = pix.pixelformat;
-		pix.pixelformat = v4l2Fourcc('Y','U','Y','V');
+		//pix.pixelformat = v4l2Fourcc('Y','U','Y','V');
 		//pix.pixelformat = v4l2Fourcc('Y','U','1','2');
+		pix.pixelformat = V4L2_PIX_FMT_RGB24;
 		int result2 = v4l2_ioctl(fd_, VIDIOC_TRY_FMT, &fmt);
 		if (result2 == -1) {
 			std::cout << "Trying other format failed. ErrNo: " << errno << std::endl;
@@ -319,10 +323,11 @@ public:
 		}
 	}
 
-	void streamFor5Seconds() {
+	void startStreaming() {
 		fd_set             fds;
 		struct timeval     tv;
 		struct v4l2_buffer buf;
+		doStream_ = true;
 
 		int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		if (-1 == v4l2_ioctl(fd_, VIDIOC_STREAMON, &type)) {
@@ -330,7 +335,7 @@ public:
 			return;
 		}
 		int r = 0;
-		for (int i = 0; i < 20; i++) {
+		while (doStream_) {
 			do {
 				FD_ZERO(&fds);
 				FD_SET(fd_, &fds);
@@ -351,18 +356,20 @@ public:
 			buf.memory = V4L2_MEMORY_MMAP;
 			v4l2_ioctl(fd_, VIDIOC_DQBUF, &buf);
 
-			std::stringstream  outNameStream;
-			outNameStream << "/home/roman/out" << std::setfill('0') <<  std::setw(3) << i << ".ppm";
-			std::string fname = outNameStream.str();
-			std::ofstream fout;
-			fout.open(fname.c_str(), std::ios::out|std::ios::binary|std::ios::trunc);
-			if (!fout.is_open()) {
-					std::cout << "Cannot open image '" << fname << "'" << std::endl;
-					return;
+//			std::stringstream  outNameStream;
+//			std::string fname = outNameStream.str();
+//			std::ofstream fout;
+//			fout.open(fname.c_str(), std::ios::out|std::ios::binary|std::ios::trunc);
+//			if (!fout.is_open()) {
+//					std::cout << "Cannot open image '" << fname << "'" << std::endl;
+//					return;
+//			}
+//			fout << "P6\n" << currFmt_.width << " " << currFmt_.height << " 255\n";
+//			fout.write(reinterpret_cast<const char*>(buffers_[buf.index].start), buf.bytesused);
+//			fout.close();
+			if (callback_) {
+				callback_(reinterpret_cast<unsigned char*>(buffers_[buf.index].start), buf.bytesused, 24, userData_);
 			}
-			fout << "P6\n" << currFmt_.width << " " << currFmt_.height << " 255\n";
-			fout.write(reinterpret_cast<const char*>(buffers_[buf.index].start), buf.bytesused);
-			fout.close();
 
 			v4l2_ioctl(fd_, VIDIOC_QBUF, &buf);
 		}
@@ -373,11 +380,16 @@ public:
 public:
 	std::string devName_;
 	int fd_;
+	bool doStream_;
 	__u32 nativePixelFormat_;
 	struct v4l2_capability caps_;
 	v4l2_pix_format currFmt_;
 
 	std::vector<BufferType> buffers_;
+
+	std::thread streamThread_;
+	vidcapture::VideoCallback callback_;
+	void* userData_;
 };
 
 //V4lVideoDevice::V4lVideoDevice()
@@ -441,11 +453,38 @@ VideoDeviceCapabilities V4lVideoDevice::getDeviceCapabilities() const
 {
 	if(!isValid()) return VideoDeviceCapabilities();
 	VideoDeviceCapabilities videoCaps;
-	const v4l2_capability& caps = device_->caps_;
+	//const v4l2_capability& caps = device_->caps_;
 
 	return videoCaps;
 }
 
+void V4lVideoDevice::setCallback(VideoCallback cb, void* userDataPtr)
+{
+	device_->callback_ = cb;
+	device_->userData_ = userDataPtr;
+}
+
+bool V4lVideoDevice::start()
+{
+	if (!device_->open()) {
+		device_.reset();
+		return false;
+	}
+
+	device_->capabilities();
+	Video4LinuxDevice* d = &*device_;
+	d->getCurrentFormat();
+	d->initMMapStreaming();
+	d->streamThread_ = std::thread(std::bind(&Video4LinuxDevice::startStreaming, device_));
+	return true;
+}
+
+bool V4lVideoDevice::stop()
+{
+	device_->doStream_ = false;
+	device_->streamThread_.join();
+	return true;
+}
 
 V4lVidCapture::V4lVidCapture()
 {
