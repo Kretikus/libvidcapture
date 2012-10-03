@@ -39,6 +39,7 @@ void stringConversionTest()
 
 };
 
+REGISTER_TEST(UtilTest)
+
 #include "utiltest.moc"
 
-REGISTER_TEST(UtilTest)

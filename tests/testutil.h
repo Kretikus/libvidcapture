@@ -10,6 +10,8 @@ public:
 	int registerClass(QObject*obj);
 	void runTests(int argc, char* argv[]);
 
+	void showTests();
+
 private:
 	QVector<QObject*> testObjects_;
 };
