@@ -11,7 +11,6 @@
 namespace vidcapture {
 
 class DSVideoDevice;
-typedef void (*VideoCaptureCallback)(unsigned char* data, int len, int bitsperpixel, DSVideoDevice* dev);
 
 class DSVideoDevice : public VideoDevice {
 public:
@@ -21,8 +20,9 @@ public:
 	virtual std::string             getName              () const;
 	virtual VideoDeviceCapabilities getDeviceCapabilities() const;
 	
-	void setCallback(VideoCaptureCallback cb);
-	void start();
+	virtual void setCallback(VideoCallback cb, void* userDataPtr);
+	virtual bool start();
+
 	void stop();
 
 protected:

@@ -5,6 +5,8 @@
 
 namespace vidcapture {
 
+typedef void (*VideoCallback)(unsigned char* data, int len, int bitsperpixel, void* userDataPtr);
+
 class PixelFormat {
 public:
 	enum Enum {
@@ -42,6 +44,10 @@ public:
 	virtual bool                    isValid              () const = 0;
 	virtual std::string             getName              () const = 0;
 	virtual VideoDeviceCapabilities getDeviceCapabilities() const = 0;
+
+	virtual void setCallback(VideoCallback cb, void* userDataPtr) = 0;
+	virtual bool start() = 0;
+
 };
 
 class VidCapture

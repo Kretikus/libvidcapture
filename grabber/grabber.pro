@@ -1,5 +1,8 @@
 include(../config.pri)
 
-SOURCES += main.cpp
+CONFIG  += gui
+
+HEADERS += video_widget.h
+SOURCES += video_widget.cpp main.cpp
 
 initApp(vidcapture)

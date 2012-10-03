@@ -4,17 +4,73 @@
 
 #include "util.h"
 
+#define REGISTER_FILTERGRAPH
+
 namespace vidcapture {
 
 const int BITS_PER_PIXEL = 24;
 
+#ifdef REGISTER_FILTERGRAPH
+
+HRESULT addGraphToRot(IUnknown *pUnkGraph, DWORD *pdwRegister) 
+{
+	IMoniker * pMoniker;
+	IRunningObjectTable *pROT;
+	WCHAR wsz[128];
+	HRESULT hr;
+
+	if (!pUnkGraph || !pdwRegister)
+		return E_POINTER;
+
+	if (FAILED(GetRunningObjectTable(0, &pROT)))
+		return E_FAIL;
+
+	hr = StringCchPrintfW(wsz, NUMELMS(wsz), L"FilterGraph %08x pid %08x\0", (DWORD_PTR)pUnkGraph, 
+		GetCurrentProcessId());
+
+	hr = CreateItemMoniker(L"!", wsz, &pMoniker);
+	if (SUCCEEDED(hr)) 
+	{
+		// Use the ROTFLAGS_REGISTRATIONKEEPSALIVE to ensure a strong reference
+		// to the object.  Using this flag will cause the object to remain
+		// registered until it is explicitly revoked with the Revoke() method.
+		//
+		// Not using this flag means that if GraphEdit remotely connects
+		// to this graph and then GraphEdit exits, this object registration 
+		// will be deleted, causing future attempts by GraphEdit to fail until
+		// this application is restarted or until the graph is registered again.
+		hr = pROT->Register(ROTFLAGS_REGISTRATIONKEEPSALIVE, pUnkGraph, 
+			pMoniker, pdwRegister);
+		pMoniker->Release();
+	}
+
+	pROT->Release();
+	return hr;
+}
+
+
+// Removes a filter graph from the Running Object Table
+void RemoveGraphFromRot(DWORD pdwRegister)
+{
+	IRunningObjectTable *pROT;
+
+	if (SUCCEEDED(GetRunningObjectTable(0, &pROT))) 
+	{
+		pROT->Revoke(pdwRegister);
+		pROT->Release();
+	}
+}
+
+#endif
+
+
 class CallbackHandler : public ISampleGrabberCB
 {
 public:
-	CallbackHandler(DSVideoDevice::Impl* parent);
+	CallbackHandler();
 	~CallbackHandler();
 
-	void setCallback(VideoCaptureCallback cb);
+	void setCallback(VideoCallback cb, void* userData);
 
 	virtual HRESULT __stdcall SampleCB(double time, IMediaSample* sample);
 	virtual HRESULT __stdcall BufferCB(double time, BYTE* buffer, long len);
@@ -23,31 +79,36 @@ public:
 	virtual ULONG	__stdcall Release();
 
 private:
-	VideoCaptureCallback callback;
-	DSVideoDevice::Impl* parent;
+	VideoCallback callback_;
+	void* userData_;
 	ULONG cRef_;
 };
 
 class DSVideoDevice::Impl {
 public:
-	Impl(int id, const std::wstring & devName, IFilterGraph2* graph) 
+	Impl(int id, const std::wstring & devName, IFilterGraph2* graph)
 		: id(id), filtername(devName), graph(graph),
-		sourcefilter(), samplegrabberfilter(), nullrenderer(), samplegrabber()
-	{
-		callbackhandler = new CallbackHandler(this);
+		sourcefilter(), samplegrabberfilter(), nullrenderer(),
+		samplegrabber(), callbackhandler(new CallbackHandler),
+		dwGraphRegister()
+	{}
+
+	~Impl() {
+		delete callbackhandler;
 	}
 
-	int             id;
-	std::wstring    filtername;
-	IFilterGraph2*  graph;
+	int              id;
+	std::wstring     filtername;
+	IFilterGraph2*   graph;
 
-	IBaseFilter*    sourcefilter;
-	IBaseFilter*    samplegrabberfilter;
-	IBaseFilter*    nullrenderer;
+	IBaseFilter*     sourcefilter;
+	IBaseFilter*     samplegrabberfilter;
+	IBaseFilter*     nullrenderer;
 
-	ISampleGrabber* samplegrabber;
+	ISampleGrabber*  samplegrabber;
 
 	CallbackHandler* callbackhandler;
+	DWORD            dwGraphRegister;
 };
 
 DSVideoDevice::DSVideoDevice(int id, const std::wstring & devName, IFilterGraph2* graph, ICaptureGraphBuilder2* capture, IMoniker* moniker)
@@ -58,14 +119,14 @@ DSVideoDevice::DSVideoDevice(int id, const std::wstring & devName, IFilterGraph2
 	if (hr != S_OK) throw hr;
 
 	//create a samplegrabber filter for the device
-	hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER,IID_IBaseFilter,(void**)&d_->samplegrabberfilter);
+	hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&d_->samplegrabberfilter);
 	if (hr < 0) throw hr;
 
 	//set mediatype on the samplegrabber
 	hr = d_->samplegrabberfilter->QueryInterface(IID_ISampleGrabber, (void**)&d_->samplegrabber);
 	if (hr != S_OK) throw hr;
 
-	std::wstring sgFilterName = L"SG_" + d_->filtername;
+	const std::wstring sgFilterName = L"SampleGrabberFilter_" + d_->filtername;
 	graph->AddFilter(d_->samplegrabberfilter, sgFilterName.c_str());
 
 	//set the media type
@@ -86,26 +147,40 @@ DSVideoDevice::DSVideoDevice(int id, const std::wstring & devName, IFilterGraph2
 	if (hr != S_OK) throw hr;
 
 	//set the null renderer
-	hr = CoCreateInstance(CLSID_NullRenderer,NULL,CLSCTX_INPROC_SERVER,IID_IBaseFilter,(void**) &d_->nullrenderer);
+	hr = CoCreateInstance(CLSID_NullRenderer, NULL,CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**) &d_->nullrenderer);
 	if (hr < 0) throw hr; 
 
-	std::wstring nrFilterName = L"NR_" + d_->filtername;
+	const std::wstring nrFilterName = L"NullRenderer_" + d_->filtername;
 	graph->AddFilter(d_->nullrenderer, nrFilterName.c_str());
-
+	
 	//set the render path
-#ifdef SHOW_DEBUG_RENDERER
+#ifdef DEBUG_RENDERER
 	hr = capture->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, d_->sourcefilter, d_->samplegrabberfilter, NULL);
 #else
-	hr = capture->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, d_->sourcefilter, d_->samplegrabberfilter, d_->nullrenderer);
+	hr = capture->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, d_->sourcefilter, d_->samplegrabberfilter, d_->nullrenderer);
 #endif
 	if (hr < 0) throw hr; 
 
-	#undef max // to get std::limits to work
-	long long start=0;
-	long long stop = std::numeric_limits<long long>::max();
+	//#undef max // to get std::limits to work
+	//long long start = 0;
+	long long stop = MAXLONGLONG; //std::numeric_limits<long long>::max();
 	//if the stream is started, start capturing immediately
-	hr = capture->ControlStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, d_->sourcefilter, &start, &stop, 1,2);
+	//hr = capture->ControlStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, d_->sourcefilter, &start, &stop, 1, 2);
+	hr = capture->ControlStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, d_->sourcefilter, NULL, &stop, 1, 2);
 	if (hr < 0) throw hr;
+
+
+#ifdef REGISTER_FILTERGRAPH
+	// Add our graph to the running object table, which will allow
+	// the GraphEdit application to "spy" on our graph
+	hr = addGraphToRot(d_->graph, &d_->dwGraphRegister);
+	if (FAILED(hr))
+	{
+		//Msg(TEXT("Failed to register filter graph with ROT!  hr=0x%x"), hr);
+		//g_dwGraphRegister = 0;
+	}
+#endif
+
 }
 
 bool DSVideoDevice::isValid() const
@@ -124,12 +199,12 @@ std::string DSVideoDevice::getName() const
 	return StringConversion::toStdString(d_->filtername);
 }
 
-void DSVideoDevice::setCallback(VideoCaptureCallback cb)
+void DSVideoDevice::setCallback( VideoCallback cb, void* userDataPtr )
 {
-	d_->callbackhandler->setCallback(cb);
+	d_->callbackhandler->setCallback(cb, userDataPtr);
 }
 
-void DSVideoDevice::start()
+bool DSVideoDevice::start()
 {
 	HRESULT hr;
 
@@ -142,6 +217,7 @@ void DSVideoDevice::start()
 	hr = d_->sourcefilter->Run(0);
 	if (hr < 0) throw hr;
 
+	return true;
 }
 
 void DSVideoDevice::stop()
@@ -160,13 +236,18 @@ void DSVideoDevice::stop()
 }
 
 
-CallbackHandler::CallbackHandler(DSVideoDevice::Impl* parent)
-: callback(), parent(parent), cRef_(0)
+CallbackHandler::CallbackHandler()
+: callback_(), userData_(), cRef_(0)
 {
 }
+
 CallbackHandler::~CallbackHandler() {}
 
-void CallbackHandler::setCallback(VideoCaptureCallback cb) { callback = cb; }
+void CallbackHandler::setCallback(VideoCallback cb, void* userData) {
+	callback_ = cb;
+	userData_ = userData;
+}
+
 HRESULT __stdcall CallbackHandler::SampleCB(double time, IMediaSample* sample) 
 {
 	HRESULT hr;
@@ -175,7 +256,7 @@ HRESULT __stdcall CallbackHandler::SampleCB(double time, IMediaSample* sample)
 	hr = sample->GetPointer((BYTE**)&buffer);
 	if (hr != S_OK) return S_OK;
 
-	//if (callback) callback(buffer, sample->GetActualDataLength(), BITS_PER_PIXEL, parent);
+	if (callback_) callback_(buffer, sample->GetActualDataLength(), BITS_PER_PIXEL, userData_ );
 	return S_OK;
 }
 
